@@ -1,0 +1,24 @@
+[project]
+name = "donetick-mcp"
+version = "0.2.0"
+description = "Manage Donetick tasks over MCP using a personal API token."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1,<0.29",
+    "mcp>=2.3.0,<3",
+    "pydantic>=2.14.1,<3",
+    "tzdata>=2025.2",
+]
+
+[project.scripts]
+donetick-mcp = "donetick_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.13.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100

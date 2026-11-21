@@ -1,0 +1,8 @@
+*
+!pyproject.toml
+!uv.lock
+!LICENSE
+!README.md
+!src/
+!src/donetick_mcp/
+!src/donetick_mcp/*.py
