@@ -4,9 +4,13 @@ Ask your assistant “What chores are assigned to me this week?” or “I took 
 
 ## Whose account does the assistant use?
 
-Each connection acts as one Donetick user. Suppose Alex and Sam share a Donetick circle and “Take out the bins” is assigned to Sam. If Alex takes the bins out and marks the task done through **Donetick — Alex**, Donetick credits Alex in the task history. When Sam does the chore next week, Sam uses **Donetick — Sam**.
+We built this for a two-person household that uses SSO and keeps Donetick password login disabled. Even in a shared chat, we wanted “I took the bins out” to credit the person whose connection we selected, whoever was assigned the chore.
 
-Set up one server process per person. Give it that person's Donetick personal API token and set `DONETICK_EXPECTED_USERNAME` to the username on their Donetick profile. Before acting on a tool call, the server looks up the token owner's profile. If the username differs, the call fails before it reads or changes any tasks. This catches mistakes such as mounting Sam's token in Alex's container.
+The server we originally considered, `jason1365/donetick-mcp-server`, signs in with a Donetick username and password. Its `complete_chore` tool accepts an optional `completed_by` user ID, so the assistant can specify who did the work. Another server, `jaredglaser/donetick-mcp`, uses a personal token and also lets the caller record a completion on someone else's behalf. [jason1365's setup and tools](https://github.com/jason1365/donetick-mcp-server/blob/fd33f2f35cf7f54367e528eb6ecb71eeb25f1731/README.md) · [jaredglaser's setup and tools](https://github.com/jaredglaser/donetick-mcp/blob/490bc8cd33ebf0e49de97a0262aa5b8a686c346b/README.md)
+
+Here, **choosing the connection chooses who gets credit**. Give each person a server process with their own personal token and set `DONETICK_EXPECTED_USERNAME` to their Donetick username. Before each tool acts, the server asks Donetick who owns the token. If Sam's token is mounted in Alex's process, the call stops before it reads or changes any tasks.
+
+If the bins are assigned to Sam but Alex takes them out, Alex uses **Donetick — Alex**. The assistant supplies the task ID and can add a note or completion time. Donetick credits Alex from the verified token. When Sam does the chore next week, Sam uses **Donetick — Sam**.
 
 The connection name helps people pick an account. Anyone who can use **Donetick — Alex** can act with Alex's permissions, regardless of who is signed in to the chat. Give each person access to the appropriate connection in your MCP client. On a shared chat login, select or name the connection explicitly. Ask it to call `whoami` to see the Donetick username and circle ID it will use.
 
