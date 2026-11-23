@@ -1,24 +1,49 @@
 # Donetick MCP
 
-Give your assistant a connection that acts as a specific [Donetick](https://github.com/donetick/donetick) user. Ask “What chores are assigned to me this week?” or “I took the bins out. Mark that done.” The assistant reads and updates tasks with that user's permissions. Tested with Donetick v0.1.83.
+Donetick MCP is a Model Context Protocol (MCP) server that lets an assistant manage household chores as a specific [Donetick](https://github.com/donetick/donetick) user. Ask “Which chores are assigned to me?” or “I took the bins out. Mark that done.” Tested with Donetick v0.1.83.
+
+For setup, jump to [a local desktop or CLI client](#connect-a-local-mcp-client) or [hosted ChatGPT](#connect-chatgpt-through-an-openai-tunnel).
+
+## Why choose this server?
+
+I built this for my two-person household. Both of us sign in through SSO, and Donetick password login is disabled. I wanted to decide which account an assistant could use when I granted access to a connection. If the bins are assigned to Sam but Alex takes them out, Alex can use **Donetick — Alex** to mark the chore done. Donetick credits Alex in the task history.
+
+Choose this server when each connection should verify the Donetick account it acts as and credit every completion to that user, even if the account is a circle admin. If one person regularly logs chores for the whole household, a tool that lets them specify who did the work may suit that workflow better.
+
+| Alternative | How it handles accounts and completions |
+| --- | --- |
+| jason1365/donetick-mcp-server | Signs in with a Donetick username and password. The caller can supply a member ID with `completed_by` when completing a chore. [Setup and tools](https://github.com/jason1365/donetick-mcp-server/blob/fd33f2f35cf7f54367e528eb6ecb71eeb25f1731/README.md) |
+| jaredglaser/donetick-mcp | Uses a personal token and also lets the caller record a completion on another member's behalf. [Setup and tools](https://github.com/jaredglaser/donetick-mcp/blob/490bc8cd33ebf0e49de97a0262aa5b8a686c346b/README.md) |
+| Donetick's built-in MCP server | On versions that include the `/mcp` endpoint, a client can connect directly over HTTP with an API token. Circle admins and managers can credit another member. [Upstream setup](https://github.com/donetick/donetick/blob/78c43983b9a549e79c19fd88221cb13d6bc95c81/README.md#mcp-server) · [Completion tool](https://github.com/donetick/donetick/blob/78c43983b9a549e79c19fd88221cb13d6bc95c81/internal/mcp/tools_chores.go#L72-L80) |
 
 ## Whose account does the assistant use?
 
-**Donetick — Alex always acts as Alex.** Granting someone access to that connection in your MCP client or workspace lets them use its tools as Alex. Donetick applies Alex's permissions to every task they read or change. To limit Sam to acting as Sam, grant Sam access only to **Donetick — Sam**. If a shared chat login has access to both connections, anyone using that login can choose either one.
+**Anyone with access to Donetick — Alex can use its tools as Alex.** Your MCP client or workspace controls who can use that connection. Donetick applies Alex's permissions to the tasks its tools read or change. To limit Sam to acting as Sam, grant Sam access only to **Donetick — Sam**. If a shared chat login has access to both connections, anyone using that login can choose either one.
 
-Configure one server process per person with their personal token and `DONETICK_EXPECTED_USERNAME`. Before acting on a tool call, the server asks Donetick who owns the token. If Sam's token is mounted in Alex's process, the call stops before it reads or changes any tasks. Call `whoami` to see the verified username and circle ID.
+Run one server process per person, with their personal token and their exact Donetick username in `DONETICK_EXPECTED_USERNAME`. Before acting on a tool call, the server asks Donetick who owns the token. If Sam's token is mounted in Alex's process, the call stops before it reads or changes any tasks. The `whoami` tool reports the verified username and circle ID.
 
-We built this for a two-person household that uses SSO and keeps Donetick password login disabled. We wanted to choose whose account the assistant could use before asking it to do anything. For example, if the bins are assigned to Sam but Alex takes them out, Alex selects **Donetick — Alex** and says “Mark the bins done.” Donetick records Alex in the task history.
+## Work with tasks
 
-The server we originally considered, `jason1365/donetick-mcp-server`, signs in with a Donetick username and password and accepts an optional `completed_by` user ID. Another server, `jaredglaser/donetick-mcp`, uses a personal token and also lets the caller record a completion on someone else's behalf. In this project, `complete_task` always records the completion as the connection's verified user. [jason1365's setup and tools](https://github.com/jason1365/donetick-mcp-server/blob/fd33f2f35cf7f54367e528eb6ecb71eeb25f1731/README.md) · [jaredglaser's setup and tools](https://github.com/jaredglaser/donetick-mcp/blob/490bc8cd33ebf0e49de97a0262aa5b8a686c346b/README.md)
+Start by finding the task and confirming the account. The tools return the acting user's details alongside the result so you can check who performed a change.
 
-## Connect a local MCP client with uv
+| What you want to do | Tools |
+| --- | --- |
+| Check the connection's account, look up household member IDs, or find existing labels | `whoami`, `list_members`, `list_labels` |
+| Find a chore by name or assignee, read its details, or see who completed it | `list_tasks`, `get_task`, `task_history` |
+| Create a chore, edit its schedule, choose assignees, or change its labels | `create_task`, `edit_task`, `assign_task`, `set_task_labels` |
+| Mark an occurrence done, skip it, or undo this account's latest completion or skip for that task within five minutes | `complete_task`, `skip_task`, `undo_task` |
 
-Use this setup when your desktop or CLI client can launch a command on a machine that can reach Donetick. The client starts the server and exchanges tool calls over standard input and output (stdio). For hosted ChatGPT, use the [tunnel setup](#connect-chatgpt-through-an-openai-tunnel) instead.
+To change a task, read it with `get_task` and pass its `updatedAt` as `expected_updated_at` when editing, assigning, or replacing labels. If the server sees a newer version when it checks the task, it asks you to read it again. Include UTC offsets in timestamps. If a write times out, check the task and its history before retrying because Donetick may already have applied it.
 
-Clone this repository and run `uv sync --locked` in the checkout with [uv](https://docs.astral.sh/uv/). Sign in to Donetick as the person the connection should act as. Under **Settings → API Tokens**, create a personal token and save it in a file readable only by that user on the host.
+## Connect a local MCP client
 
-For clients that use `mcpServers`, add an entry like this. Replace the paths, URL and username with your own. The client needs the absolute paths because it can start the process from any directory.
+Use this route when your desktop or CLI client can launch a process that can reach Donetick. The client exchanges tool calls with that process over standard input and output (stdio). Choose uv to run it with Python on the host, or Docker to run it in a container.
+
+For either option, clone this repository. Sign in to Donetick as the person the connection should act as, create a token under **Settings → API Tokens**, and save it in a file readable only by your host user.
+
+### Run with uv
+
+From the checkout, run `uv sync --locked` with [uv](https://docs.astral.sh/uv/). For clients that use `mcpServers`, add an entry like this. Replace the paths, URL and username with your own. Absolute paths let the client launch the server from any directory.
 
 ```json
 {
@@ -38,31 +63,34 @@ For clients that use `mcpServers`, add an entry like this. Replace the paths, UR
 }
 ```
 
-## Connection settings
+### Run the local server in Docker
 
-Use the same settings whether uv, Docker, or the tunnel client starts the server.
+Build the stdio image once from the checkout with `docker build -t donetick-mcp .`. Configure your client to launch a container for each session. The `-i` flag keeps stdin open for tool calls.
 
-| Variable | What to supply |
-| --- | --- |
-| `DONETICK_BASE_URL` | Instance URL as reachable from the server process, for example `https://tasks.example.com`. The server adds `/api/v1` to requests. |
-| `DONETICK_EXPECTED_USERNAME` | Exact Donetick username that must match the token owner's profile. |
-| `DONETICK_TOKEN_FILE` or `DONETICK_TOKEN` | Set exactly one. Supply the path to a file containing the personal token, or pass the token value through the process environment. |
-| `DONETICK_CONNECTION_NAME` | Name the server reports to the MCP client. Defaults to `Donetick`. |
-| `DONETICK_TIMEZONE` | IANA time zone for new tasks, such as `Europe/Paris`. Defaults to `UTC`. A task can override it with `frequencyMetadata.timezone`. |
+In this Linux example, replace `1000:1000` with the UID and GID of the token file's owner (run `id -u` and `id -g` as that user). This lets the process read the private file mounted inside the container. Replace the host path, Donetick URL, and username with your own.
 
-## Run the local server in Docker
-
-Use the default image if your client can launch Docker and you want the container to supply Python and the dependencies. Build it once from the checkout. For each session, run the second command from a shell script your client launches with the connection settings in its environment. Set `DONETICK_TOKEN_FILE` to an absolute host path. The `-i` flag keeps stdin open for tool calls. On Linux, `--user` lets the process read a token file owned by your host user.
-
-```sh
-docker build -t donetick-mcp .
-docker run --rm -i --user "$(id -u):$(id -g)" \
-  -e DONETICK_BASE_URL -e DONETICK_EXPECTED_USERNAME \
-  -e DONETICK_CONNECTION_NAME -e DONETICK_TIMEZONE \
-  -e DONETICK_TOKEN_FILE=/run/secrets/donetick-token \
-  --mount "type=bind,src=$DONETICK_TOKEN_FILE,dst=/run/secrets/donetick-token,readonly" \
-  donetick-mcp
+```json
+{
+  "mcpServers": {
+    "donetick-alex": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--user", "1000:1000",
+        "--mount", "type=bind,src=/absolute/path/to/alex.token,dst=/run/secrets/donetick-token,readonly",
+        "-e", "DONETICK_TOKEN_FILE=/run/secrets/donetick-token",
+        "-e", "DONETICK_BASE_URL=https://tasks.example.com",
+        "-e", "DONETICK_EXPECTED_USERNAME=alex",
+        "-e", "DONETICK_CONNECTION_NAME=Donetick — Alex",
+        "donetick-mcp"
+      ]
+    }
+  }
+}
 ```
+
+### Verify the local connection
+
+After saving either configuration, ask your client to call `whoami` on `donetick-alex`. Check that `actor.username` is `alex` (or the username you configured) before asking it to change a chore.
 
 ## Connect ChatGPT through an OpenAI tunnel
 
@@ -72,7 +100,7 @@ The **tunnel ID** tells OpenAI which connection to route calls through. The **Op
 
 ### Docker Compose example
 
-This service keeps Alex's tunnel available even when Alex's computer is off. Run it on an always-on host that can reach OpenAI and Donetick.
+This service keeps Alex's tunnel available even when Alex's computer is off. Clone this repository on an always-on host that can reach OpenAI and Donetick, then follow the steps from that checkout.
 
 1. Create a tunnel in OpenAI Platform, associate it with your ChatGPT workspace, and copy its ID. Create a restricted OpenAI API key with **Tunnels Read + Use**. The account that owns the key also needs those permissions. [OpenAI's secure MCP tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
 2. In Donetick, sign in as Alex and create a personal token under **Settings → API Tokens**. In the repository checkout, create a `secrets/` directory. Save the Donetick token in `secrets/alex.token` and the OpenAI runtime key in `secrets/openai-runtime.key`, one value per file. Both files should be owned by the user running Compose and readable only by that user.
@@ -115,18 +143,17 @@ docker compose up -d --build donetick-alex
 
 In ChatGPT, add a custom MCP connection named **Donetick — Alex**, choose **Tunnel**, and select Alex's tunnel. Choose **No authentication** for the MCP server because the container already supplies Alex's Donetick token. Ask that connection to call `whoami`. A reply with `actor.username` equal to `alex` verifies both the tunnel and the Donetick credential end to end.
 
-## Work with tasks
+## Connection settings
 
-Start by finding the task and confirming the account. The tools return the acting user's details alongside the result so you can check who performed a change.
+Use the same settings whether uv, Docker, or the tunnel client starts the server.
 
-| What you want to do | Tools |
+| Variable | What to supply |
 | --- | --- |
-| Check the connection's account, look up household member IDs, or find existing labels | `whoami`, `list_members`, `list_labels` |
-| Find a chore by name or assignee, read its details, or see who completed it | `list_tasks`, `get_task`, `task_history` |
-| Create a chore, edit its schedule, choose assignees, or change its labels | `create_task`, `edit_task`, `assign_task`, `set_task_labels` |
-| Mark an occurrence done, skip it, or undo the most recent action | `complete_task`, `skip_task`, `undo_task` |
-
-To change a task, read it with `get_task` and pass its `updatedAt` as `expected_updated_at` when editing, assigning, or replacing labels. If the server sees a newer version when it checks the task, it asks you to read it again. Include UTC offsets in timestamps. If a write times out, check the task and its history before retrying because Donetick may already have applied it.
+| `DONETICK_BASE_URL` | Instance URL as reachable from the server process, for example `https://tasks.example.com`. The server adds `/api/v1` to requests. |
+| `DONETICK_EXPECTED_USERNAME` | Exact Donetick username that must match the token owner's profile. |
+| `DONETICK_TOKEN_FILE` or `DONETICK_TOKEN` | Set exactly one. Supply the path to a file containing the personal token, or pass the token value through the process environment. |
+| `DONETICK_CONNECTION_NAME` | Name the server reports to the MCP client. Defaults to `Donetick`. |
+| `DONETICK_TIMEZONE` | IANA time zone for new tasks, such as `Europe/Paris`. Defaults to `UTC`. A task can override it with `frequencyMetadata.timezone`. |
 
 ## Development
 
