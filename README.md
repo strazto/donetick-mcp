@@ -1,18 +1,16 @@
 # Donetick MCP
 
-Ask your assistant “What chores are assigned to me this week?” or “I took the bins out. Mark that done.” This MCP server gives the assistant tools to look up tasks, read their history, and record changes in your [Donetick](https://github.com/donetick/donetick) instance. Tested with Donetick v0.1.83.
+Give your assistant a connection that acts as a specific [Donetick](https://github.com/donetick/donetick) user. Ask “What chores are assigned to me this week?” or “I took the bins out. Mark that done.” The assistant reads and updates tasks with that user's permissions. Tested with Donetick v0.1.83.
 
 ## Whose account does the assistant use?
 
-We built this for a two-person household that uses SSO and keeps Donetick password login disabled. Even in a shared chat, we wanted “I took the bins out” to credit the person whose connection we selected, whoever was assigned the chore.
+**Donetick — Alex always acts as Alex.** Granting someone access to that connection in your MCP client or workspace lets them use its tools as Alex. Donetick applies Alex's permissions to every task they read or change. To limit Sam to acting as Sam, grant Sam access only to **Donetick — Sam**. If a shared chat login has access to both connections, anyone using that login can choose either one.
 
-The server we originally considered, `jason1365/donetick-mcp-server`, signs in with a Donetick username and password. Its `complete_chore` tool accepts an optional `completed_by` user ID, so the assistant can specify who did the work. Another server, `jaredglaser/donetick-mcp`, uses a personal token and also lets the caller record a completion on someone else's behalf. [jason1365's setup and tools](https://github.com/jason1365/donetick-mcp-server/blob/fd33f2f35cf7f54367e528eb6ecb71eeb25f1731/README.md) · [jaredglaser's setup and tools](https://github.com/jaredglaser/donetick-mcp/blob/490bc8cd33ebf0e49de97a0262aa5b8a686c346b/README.md)
+Configure one server process per person with their personal token and `DONETICK_EXPECTED_USERNAME`. Before acting on a tool call, the server asks Donetick who owns the token. If Sam's token is mounted in Alex's process, the call stops before it reads or changes any tasks. Call `whoami` to see the verified username and circle ID.
 
-Here, **choosing the connection chooses who gets credit**. Give each person a server process with their own personal token and set `DONETICK_EXPECTED_USERNAME` to their Donetick username. Before each tool acts, the server asks Donetick who owns the token. If Sam's token is mounted in Alex's process, the call stops before it reads or changes any tasks.
+We built this for a two-person household that uses SSO and keeps Donetick password login disabled. We wanted to choose whose account the assistant could use before asking it to do anything. For example, if the bins are assigned to Sam but Alex takes them out, Alex selects **Donetick — Alex** and says “Mark the bins done.” Donetick records Alex in the task history.
 
-If the bins are assigned to Sam but Alex takes them out, Alex uses **Donetick — Alex**. The assistant supplies the task ID and can add a note or completion time. Donetick credits Alex from the verified token. When Sam does the chore next week, Sam uses **Donetick — Sam**.
-
-The connection name helps people pick an account. Anyone who can use **Donetick — Alex** can act with Alex's permissions, regardless of who is signed in to the chat. Give each person access to the appropriate connection in your MCP client. On a shared chat login, select or name the connection explicitly. Ask it to call `whoami` to see the Donetick username and circle ID it will use.
+The server we originally considered, `jason1365/donetick-mcp-server`, signs in with a Donetick username and password and accepts an optional `completed_by` user ID. Another server, `jaredglaser/donetick-mcp`, uses a personal token and also lets the caller record a completion on someone else's behalf. In this project, `complete_task` always records the completion as the connection's verified user. [jason1365's setup and tools](https://github.com/jason1365/donetick-mcp-server/blob/fd33f2f35cf7f54367e528eb6ecb71eeb25f1731/README.md) · [jaredglaser's setup and tools](https://github.com/jaredglaser/donetick-mcp/blob/490bc8cd33ebf0e49de97a0262aa5b8a686c346b/README.md)
 
 ## Connect a local MCP client with uv
 
